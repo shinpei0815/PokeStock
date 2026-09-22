@@ -86,15 +86,13 @@ function getRelativeTime(
     return `${ageMinutes}分前`;
   }
 
-  const hours =
-    Math.floor(ageMinutes / 60);
+  const hours = Math.floor(ageMinutes / 60);
 
   if (hours < 24) {
     return `${hours}時間前`;
   }
 
-  const days =
-    Math.floor(hours / 24);
+  const days = Math.floor(hours / 24);
 
   return `${days}日前`;
 }
@@ -186,6 +184,12 @@ export default function SalesList({
   const [keyword, setKeyword] =
     useState("");
 
+  const [selectedProduct, setSelectedProduct] =
+    useState("all");
+
+  const [selectedStore, setSelectedStore] =
+    useState("all");
+
   const [status, setStatus] =
     useState("all");
 
@@ -202,6 +206,10 @@ export default function SalesList({
     return () =>
       clearInterval(timer);
   }, []);
+
+  // --------------------------------
+  // 24時間以内だけ表示対象にする
+  // --------------------------------
 
   const visiblePosts = useMemo(() => {
     return posts.filter((post) => {
@@ -222,6 +230,54 @@ export default function SalesList({
       return ageMinutes < 24 * 60;
     });
   }, [posts, now]);
+
+  // --------------------------------
+  // 商品一覧
+  // --------------------------------
+
+  const productOptions = useMemo(() => {
+    const products = new Set<string>();
+
+    for (const post of visiblePosts) {
+      if (post.product_name) {
+        products.add(post.product_name);
+      }
+    }
+
+    return Array.from(products).sort(
+      (a, b) =>
+        a.localeCompare(
+          b,
+          "ja"
+        )
+    );
+  }, [visiblePosts]);
+
+  // --------------------------------
+  // 店舗一覧
+  // --------------------------------
+
+  const storeOptions = useMemo(() => {
+    const stores = new Set<string>();
+
+    for (const post of visiblePosts) {
+      if (post.store_name) {
+        stores.add(post.store_name);
+      }
+    }
+
+    return Array.from(stores).sort(
+      (a, b) =>
+        a.localeCompare(
+          b,
+          "ja"
+        )
+    );
+  }, [visiblePosts]);
+
+  // --------------------------------
+  // 同じX投稿を1カードにまとめる
+  // --------------------------------
 
   const groupedPosts = useMemo(() => {
     const groupMap =
@@ -260,8 +316,12 @@ export default function SalesList({
     );
   }, [visiblePosts]);
 
-  const filteredGroups =
-    groupedPosts.filter((group) => {
+  // --------------------------------
+  // 検索・絞り込み
+  // --------------------------------
+
+  const filteredGroups = useMemo(() => {
+    return groupedPosts.filter((group) => {
       const searchKeyword =
         keyword
           .trim()
@@ -290,6 +350,22 @@ export default function SalesList({
             )
         );
 
+      const matchesProduct =
+        selectedProduct === "all" ||
+        group.items.some(
+          (item) =>
+            item.product_name ===
+            selectedProduct
+        );
+
+      const matchesStore =
+        selectedStore === "all" ||
+        group.items.some(
+          (item) =>
+            item.store_name ===
+            selectedStore
+        );
+
       const matchesStatus =
         status === "all" ||
         group.items.some(
@@ -299,18 +375,41 @@ export default function SalesList({
 
       return (
         matchesKeyword &&
+        matchesProduct &&
+        matchesStore &&
         matchesStatus
       );
     });
+  }, [
+    groupedPosts,
+    keyword,
+    selectedProduct,
+    selectedStore,
+    status,
+  ]);
+
+  const hasActiveFilters =
+    keyword.trim() !== "" ||
+    selectedProduct !== "all" ||
+    selectedStore !== "all" ||
+    status !== "all";
+
+  function resetFilters() {
+    setKeyword("");
+    setSelectedProduct("all");
+    setSelectedStore("all");
+    setStatus("all");
+  }
 
   return (
     <>
       {/* 検索・絞り込み */}
       <div className="mb-5 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:mb-6 sm:p-5">
         <div className="grid gap-4 md:grid-cols-2">
+          {/* キーワード */}
           <div>
             <label className="mb-2 block text-sm font-bold text-gray-800">
-              商品名・店舗名で検索
+              キーワード検索
             </label>
 
             <input
@@ -321,11 +420,76 @@ export default function SalesList({
                   e.target.value
                 )
               }
-              placeholder="例：30th、GEO"
+              placeholder="商品名・店舗名"
               className="w-full rounded-xl border border-gray-300 px-4 py-3 text-base text-gray-900 outline-none transition focus:border-blue-500 sm:py-2.5"
             />
           </div>
 
+          {/* 商品 */}
+          <div>
+            <label className="mb-2 block text-sm font-bold text-gray-800">
+              商品
+            </label>
+
+            <select
+              value={selectedProduct}
+              onChange={(e) =>
+                setSelectedProduct(
+                  e.target.value
+                )
+              }
+              className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-base text-gray-900 outline-none transition focus:border-blue-500 sm:py-2.5"
+            >
+              <option value="all">
+                すべての商品
+              </option>
+
+              {productOptions.map(
+                (product) => (
+                  <option
+                    key={product}
+                    value={product}
+                  >
+                    {product}
+                  </option>
+                )
+              )}
+            </select>
+          </div>
+
+          {/* 店舗 */}
+          <div>
+            <label className="mb-2 block text-sm font-bold text-gray-800">
+              店舗
+            </label>
+
+            <select
+              value={selectedStore}
+              onChange={(e) =>
+                setSelectedStore(
+                  e.target.value
+                )
+              }
+              className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-base text-gray-900 outline-none transition focus:border-blue-500 sm:py-2.5"
+            >
+              <option value="all">
+                すべての店舗
+              </option>
+
+              {storeOptions.map(
+                (store) => (
+                  <option
+                    key={store}
+                    value={store}
+                  >
+                    {store}
+                  </option>
+                )
+              )}
+            </select>
+          </div>
+
+          {/* 販売状況 */}
           <div>
             <label className="mb-2 block text-sm font-bold text-gray-800">
               販売状況
@@ -366,13 +530,35 @@ export default function SalesList({
             </select>
           </div>
         </div>
+
+        {/* 条件リセット */}
+        {hasActiveFilters && (
+          <div className="mt-4 border-t border-gray-100 pt-4">
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="text-sm font-bold text-blue-600 hover:underline"
+            >
+              絞り込み条件をリセット
+            </button>
+          </div>
+        )}
       </div>
 
-      <p className="mb-3 text-sm text-gray-500 sm:mb-4">
-        {filteredGroups.length}
-        件の販売情報
-      </p>
+      <div className="mb-3 flex items-center justify-between gap-3 sm:mb-4">
+        <p className="text-sm text-gray-500">
+          {filteredGroups.length}
+          件の販売情報
+        </p>
 
+        {hasActiveFilters && (
+          <p className="text-xs font-bold text-blue-600">
+            絞り込み中
+          </p>
+        )}
+      </div>
+
+      {/* 販売情報一覧 */}
       <div className="space-y-4">
         {filteredGroups.map(
           (group) => {
@@ -405,7 +591,6 @@ export default function SalesList({
                 key={group.key}
                 className={`overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6 ${freshness.cardClass}`}
               >
-                {/* 店舗名 + ステータス */}
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                   <div className="min-w-0">
                     <h2 className="break-words text-lg font-bold text-gray-900 sm:text-xl">
@@ -437,14 +622,12 @@ export default function SalesList({
                   </div>
                 </div>
 
-                {/* 商品一覧 */}
+                {/* 商品 */}
                 <div className="mt-4 flex flex-wrap gap-2">
                   {group.items.map(
                     (item) => (
                       <Link
-                        key={
-                          item.id
-                        }
+                        key={item.id}
                         href={`/sales/${item.id}`}
                         className="max-w-full break-words rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-bold text-gray-800 transition hover:bg-gray-100 active:bg-gray-200"
                       >
@@ -455,7 +638,7 @@ export default function SalesList({
                   )}
                 </div>
 
-                {/* X投稿本文 */}
+                {/* X投稿 */}
                 {sourcePost?.post_text && (
                   <div className="mt-5 rounded-xl bg-gray-50 p-3 sm:p-4">
                     <p className="whitespace-pre-wrap break-words text-sm leading-6 text-gray-700 sm:text-base sm:leading-7">
@@ -466,7 +649,6 @@ export default function SalesList({
                   </div>
                 )}
 
-                {/* 投稿情報 */}
                 <div className="mt-5 border-t border-gray-100 pt-4">
                   {sourcePost?.posted_at && (
                     <>
@@ -531,8 +713,20 @@ export default function SalesList({
 
         {filteredGroups.length ===
           0 && (
-          <div className="rounded-2xl border border-gray-200 bg-white p-6 text-center text-sm text-gray-500 sm:p-8 sm:text-base">
-            現在、新しい販売情報はありません。
+          <div className="rounded-2xl border border-gray-200 bg-white p-6 text-center sm:p-8">
+            <p className="text-sm font-bold text-gray-700 sm:text-base">
+              条件に一致する販売情報がありません。
+            </p>
+
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={resetFilters}
+                className="mt-3 text-sm font-bold text-blue-600 hover:underline"
+              >
+                絞り込み条件をリセット
+              </button>
+            )}
           </div>
         )}
       </div>
