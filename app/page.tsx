@@ -47,7 +47,19 @@ function getRelativeTime(dateString: string | null) {
 
 export default async function Home() {
   // --------------------------------
+  // 24時間前の時刻を作る
+  // --------------------------------
+
+  const twentyFourHoursAgo =
+    new Date(
+      Date.now() - 24 * 60 * 60 * 1000
+    ).toISOString();
+
+  // --------------------------------
   // 販売情報取得
+  //
+  // x_postsをINNER JOINして
+  // posted_atが24時間以内のものだけ取得
   // --------------------------------
 
   const {
@@ -62,7 +74,7 @@ export default async function Home() {
       status,
       confidence,
       created_at,
-      source_post:x_posts!sale_items_source_post_id_fkey (
+      source_post:x_posts!sale_items_source_post_id_fkey!inner (
         id,
         x_post_id,
         post_text,
@@ -71,12 +83,14 @@ export default async function Home() {
         author_name,
         author_username
       )
-    `);
+    `)
+    .gte(
+      "source_post.posted_at",
+      twentyFourHoursAgo
+    );
 
   // --------------------------------
   // 最終X取得時刻
-  // app_settingsはRLSで非公開なので
-  // サーバー側のsupabaseAdminを使用
   // --------------------------------
 
   const {
@@ -110,7 +124,10 @@ export default async function Home() {
   // --------------------------------
 
   if (error) {
-    console.error(error);
+    console.error(
+      "sale_items取得エラー:",
+      error
+    );
 
     return (
       <main className="min-h-screen bg-gray-50 text-gray-900">
@@ -128,20 +145,25 @@ export default async function Home() {
   }
 
   // --------------------------------
-  // SupabaseのJOIN結果を整形
+  // JOIN結果を整形
   // --------------------------------
 
   const normalizedData = (data ?? []).map(
     (item) => ({
       id: item.id,
+
       product_name:
         item.product_name,
+
       store_name:
         item.store_name,
+
       status:
         item.status,
+
       confidence:
         item.confidence,
+
       created_at:
         item.created_at,
 
@@ -164,16 +186,14 @@ export default async function Home() {
     normalizedData.sort(
       (a, b) => {
         const aTime =
-          a.source_post
-            ?.posted_at
+          a.source_post?.posted_at
             ? new Date(
                 a.source_post.posted_at
               ).getTime()
             : 0;
 
         const bTime =
-          b.source_post
-            ?.posted_at
+          b.source_post?.posted_at
             ? new Date(
                 b.source_post.posted_at
               ).getTime()
@@ -256,9 +276,7 @@ export default async function Home() {
           </div>
         </div>
 
-        <SalesList
-          posts={sortedData}
-        />
+        <SalesList posts={sortedData} />
       </div>
     </main>
   );
