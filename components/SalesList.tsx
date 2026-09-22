@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 type XPost = {
@@ -25,6 +25,14 @@ type SaleItem = {
 
 type Props = {
   posts: SaleItem[];
+};
+
+type SaleGroup = {
+  key: string;
+  items: SaleItem[];
+  sourcePost: XPost | null;
+  storeName: string | null;
+  status: string;
 };
 
 const statusLabel: Record<string, string> = {
@@ -63,7 +71,9 @@ function getAgeMinutes(
   );
 }
 
-function getRelativeTime(ageMinutes: number | null) {
+function getRelativeTime(
+  ageMinutes: number | null
+) {
   if (ageMinutes === null) {
     return "投稿時刻不明";
   }
@@ -76,22 +86,27 @@ function getRelativeTime(ageMinutes: number | null) {
     return `${ageMinutes}分前`;
   }
 
-  const hours = Math.floor(ageMinutes / 60);
+  const hours =
+    Math.floor(ageMinutes / 60);
 
   if (hours < 24) {
     return `${hours}時間前`;
   }
 
-  const days = Math.floor(hours / 24);
+  const days =
+    Math.floor(hours / 24);
 
   return `${days}日前`;
 }
 
-function getFreshness(ageMinutes: number | null) {
+function getFreshness(
+  ageMinutes: number | null
+) {
   if (ageMinutes === null) {
     return {
       label: "時刻不明",
-      className: "bg-gray-100 text-gray-600",
+      className:
+        "bg-gray-100 text-gray-600",
       cardClass: "",
     };
   }
@@ -99,7 +114,8 @@ function getFreshness(ageMinutes: number | null) {
   if (ageMinutes <= 60) {
     return {
       label: "新しい情報",
-      className: "bg-green-100 text-green-700",
+      className:
+        "bg-green-100 text-green-700",
       cardClass: "",
     };
   }
@@ -107,14 +123,16 @@ function getFreshness(ageMinutes: number | null) {
   if (ageMinutes <= 180) {
     return {
       label: "少し前の情報",
-      className: "bg-yellow-100 text-yellow-700",
+      className:
+        "bg-yellow-100 text-yellow-700",
       cardClass: "",
     };
   }
 
   return {
     label: "情報が古い可能性あり",
-    className: "bg-gray-200 text-gray-600",
+    className:
+      "bg-gray-200 text-gray-600",
     cardClass: "opacity-70",
   };
 }
@@ -123,51 +141,60 @@ function getDisplayStatus(
   status: string,
   ageMinutes: number | null
 ) {
-  // 販売中以外は元のステータスをそのまま表示
   if (status !== "in_stock") {
     return {
-      label: statusLabel[status] ?? "状況不明",
+      label:
+        statusLabel[status] ??
+        "状況不明",
+
       className:
         statusStyle[status] ??
         statusStyle.unknown,
     };
   }
 
-  // 投稿時間が分からない場合
   if (ageMinutes === null) {
     return {
       label: "販売情報あり",
-      className: "bg-gray-100 text-gray-700",
+      className:
+        "bg-gray-100 text-gray-700",
     };
   }
 
-  // 1時間以内
   if (ageMinutes <= 60) {
     return {
       label: "販売中",
-      className: "bg-green-100 text-green-700",
+      className:
+        "bg-green-100 text-green-700",
     };
   }
 
-  // 1〜3時間
   if (ageMinutes <= 180) {
     return {
       label: "販売情報あり",
-      className: "bg-yellow-100 text-yellow-700",
+      className:
+        "bg-yellow-100 text-yellow-700",
     };
   }
 
-  // 3〜24時間
   return {
     label: "過去の販売情報",
-    className: "bg-gray-200 text-gray-600",
+    className:
+      "bg-gray-200 text-gray-600",
   };
 }
 
-export default function SalesList({ posts }: Props) {
-  const [keyword, setKeyword] = useState("");
-  const [status, setStatus] = useState("all");
-  const [now, setNow] = useState<number | null>(null);
+export default function SalesList({
+  posts,
+}: Props) {
+  const [keyword, setKeyword] =
+    useState("");
+
+  const [status, setStatus] =
+    useState("all");
+
+  const [now, setNow] =
+    useState<number | null>(null);
 
   useEffect(() => {
     setNow(Date.now());
@@ -176,47 +203,140 @@ export default function SalesList({ posts }: Props) {
       setNow(Date.now());
     }, 60 * 1000);
 
-    return () => clearInterval(timer);
+    return () =>
+      clearInterval(timer);
   }, []);
 
-  const visiblePosts = posts.filter((post) => {
-    if (now === null) {
-      return true;
-    }
+  // --------------------------------
+  // 24時間以内の情報だけ残す
+  // --------------------------------
 
-    const ageMinutes = getAgeMinutes(
-      post.source_post?.posted_at ?? null,
-      now
+  const visiblePosts =
+    useMemo(() => {
+      return posts.filter((post) => {
+        if (now === null) {
+          return true;
+        }
+
+        const ageMinutes =
+          getAgeMinutes(
+            post.source_post
+              ?.posted_at ?? null,
+            now
+          );
+
+        if (
+          ageMinutes === null
+        ) {
+          return true;
+        }
+
+        return (
+          ageMinutes <
+          24 * 60
+        );
+      });
+    }, [posts, now]);
+
+  // --------------------------------
+  // 同じX投稿を1グループにまとめる
+  // --------------------------------
+
+  const groupedPosts =
+    useMemo(() => {
+      const groupMap =
+        new Map<
+          string,
+          SaleGroup
+        >();
+
+      for (
+        const post of
+          visiblePosts
+      ) {
+        const sourcePost =
+          post.source_post;
+
+        const key =
+          sourcePost?.id
+            ? `x-${sourcePost.id}`
+            : `sale-${post.id}`;
+
+        const existing =
+          groupMap.get(key);
+
+        if (existing) {
+          existing.items.push(post);
+          continue;
+        }
+
+        groupMap.set(key, {
+          key,
+          items: [post],
+          sourcePost,
+          storeName:
+            post.store_name,
+          status:
+            post.status,
+        });
+      }
+
+      return Array.from(
+        groupMap.values()
+      );
+    }, [visiblePosts]);
+
+  // --------------------------------
+  // 検索・ステータス絞り込み
+  // --------------------------------
+
+  const filteredGroups =
+    groupedPosts.filter(
+      (group) => {
+        const searchKeyword =
+          keyword
+            .trim()
+            .toLowerCase();
+
+        const storeName =
+          group.storeName
+            ?.toLowerCase() ??
+          "";
+
+        const productNames =
+          group.items.map(
+            (item) =>
+              item.product_name
+                ?.toLowerCase() ??
+              ""
+          );
+
+        const matchesKeyword =
+          searchKeyword === "" ||
+          storeName.includes(
+            searchKeyword
+          ) ||
+          productNames.some(
+            (productName) =>
+              productName.includes(
+                searchKeyword
+              )
+          );
+
+        const matchesStatus =
+          status === "all" ||
+          group.items.some(
+            (item) =>
+              item.status ===
+              status
+          );
+
+        return (
+          matchesKeyword &&
+          matchesStatus
+        );
+      }
     );
-
-    // 投稿日時不明なら一旦表示
-    if (ageMinutes === null) {
-      return true;
-    }
-
-    // 24時間以上の情報は一覧から非表示
-    return ageMinutes < 24 * 60;
-  });
-
-  const filteredPosts = visiblePosts.filter((post) => {
-    const productName =
-      post.product_name?.toLowerCase() ?? "";
-
-    const storeName =
-      post.store_name?.toLowerCase() ?? "";
-
-    const searchKeyword = keyword.toLowerCase();
-
-    const matchesKeyword =
-      productName.includes(searchKeyword) ||
-      storeName.includes(searchKeyword);
-
-    const matchesStatus =
-      status === "all" ||
-      post.status === status;
-
-    return matchesKeyword && matchesStatus;
-  });
 
   return (
     <>
@@ -231,7 +351,9 @@ export default function SalesList({ posts }: Props) {
               type="text"
               value={keyword}
               onChange={(e) =>
-                setKeyword(e.target.value)
+                setKeyword(
+                  e.target.value
+                )
               }
               placeholder="例：30th、GEO"
               className="w-full rounded-lg border border-gray-300 px-4 py-2 outline-none focus:border-blue-500"
@@ -246,7 +368,9 @@ export default function SalesList({ posts }: Props) {
             <select
               value={status}
               onChange={(e) =>
-                setStatus(e.target.value)
+                setStatus(
+                  e.target.value
+                )
               }
               className="w-full rounded-lg border border-gray-300 px-4 py-2 outline-none focus:border-blue-500"
             >
@@ -279,120 +403,165 @@ export default function SalesList({ posts }: Props) {
       </div>
 
       <p className="mb-4 text-sm text-gray-500">
-        {filteredPosts.length}件の販売情報
+        {filteredGroups.length}
+        件の販売情報
       </p>
 
       <div className="space-y-4">
-        {filteredPosts.map((post) => {
-          const sourcePost = post.source_post;
+        {filteredGroups.map(
+          (group) => {
+            const sourcePost =
+              group.sourcePost;
 
-          const ageMinutes =
-            now === null
-              ? null
-              : getAgeMinutes(
-                  sourcePost?.posted_at ?? null,
-                  now
-                );
+            const ageMinutes =
+              now === null
+                ? null
+                : getAgeMinutes(
+                    sourcePost
+                      ?.posted_at ??
+                      null,
+                    now
+                  );
 
-          const freshness =
-            getFreshness(ageMinutes);
+            const freshness =
+              getFreshness(
+                ageMinutes
+              );
 
-          const displayStatus =
-            getDisplayStatus(
-              post.status,
-              ageMinutes
-            );
+            const displayStatus =
+              getDisplayStatus(
+                group.status,
+                ageMinutes
+              );
 
-          return (
-            <article
-              key={post.id}
-              className={`rounded-2xl border border-gray-200 bg-white p-6 shadow-sm ${freshness.cardClass}`}
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-bold">
-                    {post.product_name ??
-                      "商品名不明"}
-                  </h2>
-
-                  <p className="mt-1 text-gray-600">
-                    {post.store_name ??
-                      "店舗不明"}
-                  </p>
-                </div>
-
-                <div className="flex flex-col items-end gap-2">
-                  <span
-                    className={`rounded-full px-3 py-1 text-sm font-bold ${displayStatus.className}`}
-                  >
-                    {displayStatus.label}
-                  </span>
-
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-bold ${freshness.className}`}
-                  >
-                    {freshness.label}
-                  </span>
-                </div>
-              </div>
-
-              {sourcePost?.post_text && (
-                <p className="mt-5 whitespace-pre-wrap text-gray-700">
-                  {sourcePost.post_text}
-                </p>
-              )}
-
-              <div className="mt-5 border-t border-gray-100 pt-4">
-                {sourcePost?.posted_at && (
-                  <>
-                    <p className="text-sm font-bold text-gray-700">
-                      {getRelativeTime(ageMinutes)}
-                    </p>
+            return (
+              <article
+                key={group.key}
+                className={`rounded-2xl border border-gray-200 bg-white p-6 shadow-sm ${freshness.cardClass}`}
+              >
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h2 className="text-xl font-bold">
+                      {group.storeName ??
+                        "店舗不明"}
+                    </h2>
 
                     <p className="mt-1 text-sm text-gray-500">
-                      投稿日時：
-                      {new Date(
-                        sourcePost.posted_at
-                      ).toLocaleString("ja-JP")}
+                      対象商品
                     </p>
-                  </>
-                )}
+                  </div>
 
-                {sourcePost?.author_name && (
-                  <p className="mt-1 text-sm text-gray-500">
-                    投稿者：
-                    {sourcePost.author_name}
+                  <div className="flex flex-wrap gap-2 sm:flex-col sm:items-end">
+                    <span
+                      className={`rounded-full px-3 py-1 text-sm font-bold ${displayStatus.className}`}
+                    >
+                      {
+                        displayStatus.label
+                      }
+                    </span>
 
-                    {sourcePost.author_username &&
-                      ` (@${sourcePost.author_username})`}
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-bold ${freshness.className}`}
+                    >
+                      {
+                        freshness.label
+                      }
+                    </span>
+                  </div>
+                </div>
+
+                {/* 商品一覧 */}
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {group.items.map(
+                    (item) => (
+                      <Link
+                        key={
+                          item.id
+                        }
+                        href={`/sales/${item.id}`}
+                        className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-bold text-gray-800 transition hover:bg-gray-100"
+                      >
+                        {item.product_name ??
+                          "商品名不明"}
+                      </Link>
+                    )
+                  )}
+                </div>
+
+                {/* X投稿本文 */}
+                {sourcePost?.post_text && (
+                  <p className="mt-5 whitespace-pre-wrap text-gray-700">
+                    {
+                      sourcePost.post_text
+                    }
                   </p>
                 )}
 
-                <div className="mt-3 flex gap-4">
-                  <Link
-                    href={`/sales/${post.id}`}
-                    className="text-sm font-bold text-gray-900 hover:underline"
-                  >
-                    詳細を見る →
-                  </Link>
+                <div className="mt-5 border-t border-gray-100 pt-4">
+                  {sourcePost?.posted_at && (
+                    <>
+                      <p className="text-sm font-bold text-gray-700">
+                        {getRelativeTime(
+                          ageMinutes
+                        )}
+                      </p>
 
-                  {sourcePost?.post_url && (
-                    <a
-                      href={sourcePost.post_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm font-bold text-blue-600 hover:underline"
-                    >
-                      Xの元投稿を見る →
-                    </a>
+                      <p className="mt-1 text-sm text-gray-500">
+                        投稿日時：
+                        {new Date(
+                          sourcePost.posted_at
+                        ).toLocaleString(
+                          "ja-JP"
+                        )}
+                      </p>
+                    </>
                   )}
-                </div>
-              </div>
-            </article>
-          );
-        })}
 
-        {filteredPosts.length === 0 && (
+                  {sourcePost?.author_name && (
+                    <p className="mt-1 text-sm text-gray-500">
+                      投稿者：
+                      {
+                        sourcePost.author_name
+                      }
+
+                      {sourcePost.author_username &&
+                        ` (@${sourcePost.author_username})`}
+                    </p>
+                  )}
+
+                  <div className="mt-3 flex flex-wrap gap-4">
+                    {group.items.length ===
+                      1 && (
+                      <Link
+                        href={`/sales/${group.items[0].id}`}
+                        className="text-sm font-bold text-gray-900 hover:underline"
+                      >
+                        詳細を見る →
+                      </Link>
+                    )}
+
+                    {sourcePost?.post_url && (
+                      <a
+                        href={
+                          sourcePost.post_url
+                        }
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm font-bold text-blue-600 hover:underline"
+                      >
+                        Xの元投稿を見る
+                        →
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </article>
+            );
+          }
+        )}
+
+        {filteredGroups.length ===
+          0 && (
           <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center text-gray-500">
             現在、新しい販売情報はありません。
           </div>
