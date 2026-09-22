@@ -119,6 +119,51 @@ function getFreshness(ageMinutes: number | null) {
   };
 }
 
+function getDisplayStatus(
+  status: string,
+  ageMinutes: number | null
+) {
+  // 販売中以外は元のステータスをそのまま表示
+  if (status !== "in_stock") {
+    return {
+      label: statusLabel[status] ?? "状況不明",
+      className:
+        statusStyle[status] ??
+        statusStyle.unknown,
+    };
+  }
+
+  // 投稿時間が分からない場合
+  if (ageMinutes === null) {
+    return {
+      label: "販売情報あり",
+      className: "bg-gray-100 text-gray-700",
+    };
+  }
+
+  // 1時間以内
+  if (ageMinutes <= 60) {
+    return {
+      label: "販売中",
+      className: "bg-green-100 text-green-700",
+    };
+  }
+
+  // 1〜3時間
+  if (ageMinutes <= 180) {
+    return {
+      label: "販売情報あり",
+      className: "bg-yellow-100 text-yellow-700",
+    };
+  }
+
+  // 3〜24時間
+  return {
+    label: "過去の販売情報",
+    className: "bg-gray-200 text-gray-600",
+  };
+}
+
 export default function SalesList({ posts }: Props) {
   const [keyword, setKeyword] = useState("");
   const [status, setStatus] = useState("all");
@@ -144,12 +189,12 @@ export default function SalesList({ posts }: Props) {
       now
     );
 
-    // 投稿日時が分からないものは一旦表示する
+    // 投稿日時不明なら一旦表示
     if (ageMinutes === null) {
       return true;
     }
 
-    // 24時間以上経過した情報は一覧から非表示
+    // 24時間以上の情報は一覧から非表示
     return ageMinutes < 24 * 60;
   });
 
@@ -210,7 +255,7 @@ export default function SalesList({ posts }: Props) {
               </option>
 
               <option value="in_stock">
-                販売中
+                販売情報
               </option>
 
               <option value="low_stock">
@@ -252,6 +297,12 @@ export default function SalesList({ posts }: Props) {
           const freshness =
             getFreshness(ageMinutes);
 
+          const displayStatus =
+            getDisplayStatus(
+              post.status,
+              ageMinutes
+            );
+
           return (
             <article
               key={post.id}
@@ -272,13 +323,9 @@ export default function SalesList({ posts }: Props) {
 
                 <div className="flex flex-col items-end gap-2">
                   <span
-                    className={`rounded-full px-3 py-1 text-sm font-bold ${
-                      statusStyle[post.status] ??
-                      statusStyle.unknown
-                    }`}
+                    className={`rounded-full px-3 py-1 text-sm font-bold ${displayStatus.className}`}
                   >
-                    {statusLabel[post.status] ??
-                      "状況不明"}
+                    {displayStatus.label}
                   </span>
 
                   <span
