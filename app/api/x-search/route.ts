@@ -16,18 +16,14 @@ type XUser = {
   username: string;
 };
 
-async function stopXFetch(
-  reason: string
-) {
+async function stopXFetch(reason: string) {
   await supabaseAdmin
     .from("app_settings")
     .update({
       x_fetch_enabled: false,
       x_fetch_stop_reason: reason,
-      x_fetch_stopped_at:
-        new Date().toISOString(),
-      updated_at:
-        new Date().toISOString(),
+      x_fetch_stopped_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     })
     .eq("id", 1);
 }
@@ -36,10 +32,7 @@ function isCreditError(
   status: number,
   responseData: unknown
 ) {
-  const text =
-    JSON.stringify(
-      responseData
-    ).toLowerCase();
+  const text = JSON.stringify(responseData).toLowerCase();
 
   return (
     status === 402 ||
@@ -52,21 +45,17 @@ function isCreditError(
   );
 }
 
-export async function GET(
-  request: Request
-) {
+export async function GET(request: Request) {
   // --------------------------------
   // ① CRON_SECRET確認
   // --------------------------------
 
-  const cronSecret =
-    process.env.CRON_SECRET;
+  const cronSecret = process.env.CRON_SECRET;
 
   if (!cronSecret) {
     return NextResponse.json(
       {
-        error:
-          "CRON_SECRET が設定されていません",
+        error: "CRON_SECRET が設定されていません",
       },
       {
         status: 500,
@@ -75,9 +64,7 @@ export async function GET(
   }
 
   const authorization =
-    request.headers.get(
-      "authorization"
-    );
+    request.headers.get("authorization");
 
   if (
     authorization !==
@@ -116,8 +103,7 @@ export async function GET(
       {
         error:
           "app_settingsの取得に失敗しました",
-        details:
-          settingsError.message,
+        details: settingsError.message,
       },
       {
         status: 500,
@@ -125,25 +111,20 @@ export async function GET(
     );
   }
 
-  if (
-    !settings.x_fetch_enabled
-  ) {
+  if (!settings.x_fetch_enabled) {
     return NextResponse.json({
       stopped: true,
-
       message:
         "X APIの自動取得は停止中です",
-
       reason:
         settings.x_fetch_stop_reason,
-
       stopped_at:
         settings.x_fetch_stopped_at,
     });
   }
 
   // --------------------------------
-  // ③ X Bearer Token
+  // ③ X Bearer Token確認
   // --------------------------------
 
   const bearerToken =
@@ -169,35 +150,30 @@ export async function GET(
     '("ポケモンカード" OR "ポケカ") ' +
     '("再入荷" OR "再販" OR "入荷しました" OR "販売開始" OR "販売中" OR "完売" OR "在庫あり") ' +
     "-is:retweet -is:reply " +
-    "-買取 -交換 -メルカリ -ad " +
+    "-買取 -交換 -メルカリ -ad -オリパ " +
     '-"目撃情報" -"情報まとめ" -"在庫復活" -"買える" -"売ってる" -"キャンセル待ち"';
 
-  const params =
-    new URLSearchParams({
-      query,
-
-      "tweet.fields":
-        "created_at,author_id",
-
-      max_results: "10",
-    });
+  const params = new URLSearchParams({
+    query,
+    "tweet.fields":
+      "created_at,author_id",
+    max_results: "10",
+  });
 
   // --------------------------------
   // ⑤ X投稿取得
   // --------------------------------
 
-  const response =
-    await fetch(
-      `https://api.x.com/2/tweets/search/recent?${params.toString()}`,
-      {
-        headers: {
-          Authorization:
-            `Bearer ${bearerToken}`,
-        },
-
-        cache: "no-store",
-      }
-    );
+  const response = await fetch(
+    `https://api.x.com/2/tweets/search/recent?${params.toString()}`,
+    {
+      headers: {
+        Authorization:
+          `Bearer ${bearerToken}`,
+      },
+      cache: "no-store",
+    }
+  );
 
   const xResponse =
     await response.json();
@@ -216,13 +192,10 @@ export async function GET(
       return NextResponse.json(
         {
           stopped: true,
-
           error:
             "X APIのクレジット不足または支出上限を検知しました",
-
           message:
             "PokeStockのX自動取得をOFFにしました",
-
           x_response:
             xResponse,
         },
@@ -237,7 +210,6 @@ export async function GET(
       {
         error:
           "X APIの取得に失敗しました",
-
         x_response:
           xResponse,
       },
@@ -282,6 +254,7 @@ export async function GET(
     "PR",
     "アフィリエイト",
     "ガチャ",
+    "オリパ",
     "プレゼント企画",
     "福袋",
     "ポケモン袋",
@@ -306,63 +279,50 @@ export async function GET(
   ];
 
   const filteredTweets =
-    tweets.filter(
-      (tweet) => {
-        const text =
-          tweet.text;
+    tweets.filter((tweet) => {
+      const text =
+        tweet.text;
 
-        const hasPokemonWord =
-          pokemonWords.some(
-            (word) =>
-              text.includes(
-                word
-              )
-          );
-
-        const hasSalesWord =
-          salesWords.some(
-            (word) =>
-              text.includes(
-                word
-              )
-          );
-
-        const hasExcludeWord =
-          excludeWords.some(
-            (word) =>
-              text.includes(
-                word
-              )
-          );
-
-        return (
-          hasPokemonWord &&
-          hasSalesWord &&
-          !hasExcludeWord
+      const hasPokemonWord =
+        pokemonWords.some(
+          (word) =>
+            text.includes(word)
         );
-      }
-    );
 
-  // 候補0件なら
-  // 投稿者APIは呼ばない
+      const hasSalesWord =
+        salesWords.some(
+          (word) =>
+            text.includes(word)
+        );
+
+      const hasExcludeWord =
+        excludeWords.some(
+          (word) =>
+            text.includes(word)
+        );
+
+      return (
+        hasPokemonWord &&
+        hasSalesWord &&
+        !hasExcludeWord
+      );
+    });
+
+  // --------------------------------
+  // 候補0件なら投稿者APIを呼ばない
+  // --------------------------------
+
   if (
-    filteredTweets.length ===
-    0
+    filteredTweets.length === 0
   ) {
     return NextResponse.json({
       stopped: false,
-
       original_count:
         tweets.length,
-
       filtered_count: 0,
-
       authors_requested: 0,
-
       x_posts_saved: 0,
-
       sale_items_saved: 0,
-
       data: [],
     });
   }
@@ -385,7 +345,6 @@ export async function GET(
     new URLSearchParams({
       ids:
         authorIds.join(","),
-
       "user.fields":
         "id,name,username",
     });
@@ -398,7 +357,6 @@ export async function GET(
           Authorization:
             `Bearer ${bearerToken}`,
         },
-
         cache: "no-store",
       }
     );
@@ -406,9 +364,7 @@ export async function GET(
   const usersXResponse =
     await usersResponse.json();
 
-  if (
-    !usersResponse.ok
-  ) {
+  if (!usersResponse.ok) {
     if (
       isCreditError(
         usersResponse.status,
@@ -422,10 +378,8 @@ export async function GET(
       return NextResponse.json(
         {
           stopped: true,
-
           error:
             "X APIのクレジット不足または支出上限を検知しました",
-
           message:
             "PokeStockのX自動取得をOFFにしました",
         },
@@ -440,7 +394,6 @@ export async function GET(
       {
         error:
           "X投稿者情報の取得に失敗しました",
-
         x_response:
           usersXResponse,
       },
@@ -469,7 +422,7 @@ export async function GET(
     );
 
   // --------------------------------
-  // ⑧ x_posts用データ
+  // ⑧ x_posts保存用データ作成
   // --------------------------------
 
   const xPostsForSave =
@@ -508,10 +461,8 @@ export async function GET(
 
           raw_data: {
             tweet,
-
             author:
-              author ??
-              null,
+              author ?? null,
           },
         };
       }
@@ -546,7 +497,6 @@ export async function GET(
       {
         error:
           "x_postsへの保存に失敗しました",
-
         details:
           xPostsError.message,
       },
@@ -560,8 +510,7 @@ export async function GET(
   // ⑩ sale_items解析
   // --------------------------------
 
-  const saleItemsForSave =
-    [];
+  const saleItemsForSave = [];
 
   for (
     const xPost of
@@ -574,19 +523,19 @@ export async function GET(
         xPost.author_username
       );
 
+    // 店舗名が取れない
+    if (!parsed.storeName) {
+      continue;
+    }
+
+    // 商品名が取れない
     if (
-      !parsed.storeName
+      parsed.products.length === 0
     ) {
       continue;
     }
 
-    if (
-      parsed.products
-        .length === 0
-    ) {
-      continue;
-    }
-
+    // 販売状況が不明
     if (
       parsed.status ===
       "unknown"
@@ -626,8 +575,7 @@ export async function GET(
   // --------------------------------
 
   if (
-    saleItemsForSave.length >
-    0
+    saleItemsForSave.length > 0
   ) {
     const {
       error:
@@ -652,7 +600,6 @@ export async function GET(
         {
           error:
             "sale_itemsへの保存に失敗しました",
-
           details:
             saleItemsError.message,
         },
@@ -664,7 +611,7 @@ export async function GET(
   }
 
   // --------------------------------
-  // ⑫ 結果確認用
+  // ⑫ 結果確認用データ
   // --------------------------------
 
   const analyzedData =
@@ -688,6 +635,10 @@ export async function GET(
         ),
       })
     );
+
+  // --------------------------------
+  // ⑬ レスポンス
+  // --------------------------------
 
   return NextResponse.json({
     stopped: false,
