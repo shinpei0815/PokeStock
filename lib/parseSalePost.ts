@@ -56,9 +56,7 @@ function detectStatus(
 /**
  * 店舗名についている余計なプロフィール文言を削除
  */
-function cleanStoreName(
-  name: string
-): string {
+function cleanStoreName(name: string): string {
   let cleaned = name.trim();
 
   const removableBracketWords = [
@@ -75,54 +73,41 @@ function cleanStoreName(
     "通販はこちら",
   ];
 
-  // 【スタッフ募集中】などを削除
   cleaned = cleaned.replace(
     /【([^】]+)】/g,
     (fullMatch, content: string) => {
       const shouldRemove =
-        removableBracketWords.some(
-          (word) =>
-            content.includes(word)
+        removableBracketWords.some((word) =>
+          content.includes(word)
         );
 
-      return shouldRemove
-        ? ""
-        : fullMatch;
+      return shouldRemove ? "" : fullMatch;
     }
   );
 
-  // [スタッフ募集中] のような形式も削除
   cleaned = cleaned.replace(
     /\[([^\]]+)\]/g,
     (fullMatch, content: string) => {
       const shouldRemove =
-        removableBracketWords.some(
-          (word) =>
-            content.includes(word)
+        removableBracketWords.some((word) =>
+          content.includes(word)
         );
 
-      return shouldRemove
-        ? ""
-        : fullMatch;
+      return shouldRemove ? "" : fullMatch;
     }
   );
 
-  // 末尾の区切り文字を整理
   cleaned = cleaned
     .replace(/[｜|／/・\-–—]+$/g, "")
     .trim();
 
-  // 連続スペースを1つに
-  cleaned = cleaned.replace(
-    /\s+/g,
-    " "
-  );
+  cleaned = cleaned.replace(/\s+/g, " ");
 
   return cleaned;
 }
 
 /**
- * 本文に書かれている有名店舗名を判定
+ * 本文から有名店舗名を判定
  */
 function extractKnownStoreFromText(
   text: string
@@ -209,7 +194,7 @@ function extractKnownStoreFromText(
 }
 
 /**
- * Xの投稿者名が店舗っぽいか判定
+ * 投稿者名から店舗判定
  */
 function extractStoreFromAuthor(
   authorName?: string | null,
@@ -258,18 +243,9 @@ function extractStoreFromAuthor(
     return null;
   }
 
-  return cleanStoreName(
-    authorName
-  );
+  return cleanStoreName(authorName);
 }
 
-/**
- * 店舗名判定
- *
- * 優先順位
- * 1. 本文中の明確な店舗名
- * 2. 店舗っぽい投稿者名
- */
 function extractStoreName(
   text: string,
   authorName?: string | null,
@@ -289,6 +265,98 @@ function extractStoreName(
 }
 
 /**
+ * 商品名候補を綺麗にする
+ */
+function cleanProductName(
+  value: string
+): string | null {
+  let product = value.trim();
+
+  // URLを除去
+  product = product.replace(
+    /https?:\/\/\S+/gi,
+    ""
+  );
+
+  // ハッシュタグ以降を除去
+  product = product.replace(
+    /#\S.*$/g,
+    ""
+  );
+
+  // 販売状況の文章を除去
+  product = product.replace(
+    /\s*(再入荷しました|再入荷|入荷しました|入荷|再販しました|再販|販売開始しました|販売開始|販売中|販売しております|在庫あり|完売しました|完売いたしました|完売となりました|完売).*$/i,
+    ""
+  );
+
+  // 値段以降を除去
+  product = product.replace(
+    /\s*[¥￥]?\d[\d,]*円.*$/g,
+    ""
+  );
+
+  product = product
+    .replace(/^[✅☑️・■●★☆▶︎▶︎\s]+/g, "")
+    .replace(/^[：:\-－]+/g, "")
+    .replace(/[！!。、,]+$/g, "")
+    .replace(/^["'「『【]+/g, "")
+    .replace(/["'」』】]+$/g, "")
+    .trim();
+
+  if (
+    product.length < 2 ||
+    product.length > 80
+  ) {
+    return null;
+  }
+
+  const invalidProducts = [
+    "ポケカ",
+    "ポケモンカード",
+    "ポケモンカードゲーム",
+    "販売情報",
+    "再販情報",
+    "入荷情報",
+    "販売商品",
+    "商品",
+  ];
+
+  if (
+    invalidProducts.includes(product)
+  ) {
+    return null;
+  }
+
+  if (
+    product.includes("オリパ")
+  ) {
+    return null;
+  }
+
+  return product;
+}
+
+/**
+ * 商品名をSetへ追加
+ */
+function addProduct(
+  products: Set<string>,
+  value: string | undefined
+) {
+  if (!value) {
+    return;
+  }
+
+  const product =
+    cleanProductName(value);
+
+  if (product) {
+    products.add(product);
+  }
+}
+
+/**
  * 商品名抽出
  */
 function extractProducts(
@@ -297,7 +365,10 @@ function extractProducts(
   const products =
     new Set<string>();
 
-  // 「商品名」
+  // --------------------------------
+  // ① 「商品名」
+  // --------------------------------
+
   const japaneseQuoteRegex =
     /「([^」]+)」/g;
 
@@ -306,19 +377,16 @@ function extractProducts(
       japaneseQuoteRegex
     )
   ) {
-    const product =
-      match[1]?.trim();
-
-    if (
-      product &&
-      product.length >= 2 &&
-      product.length <= 100
-    ) {
-      products.add(product);
-    }
+    addProduct(
+      products,
+      match[1]
+    );
   }
 
-  // 『商品名』
+  // --------------------------------
+  // ② 『商品名』
+  // --------------------------------
+
   const doubleQuoteRegex =
     /『([^』]+)』/g;
 
@@ -327,47 +395,130 @@ function extractProducts(
       doubleQuoteRegex
     )
   ) {
-    const product =
-      match[1]?.trim();
-
-    if (
-      product &&
-      product.length >= 2 &&
-      product.length <= 100
-    ) {
-      products.add(product);
-    }
+    addProduct(
+      products,
+      match[1]
+    );
   }
 
-  // 【】は商品っぽいものだけ採用
-  const bracketRegex =
-    /【([^】]+)】/g;
+  // --------------------------------
+  // ③ 拡張パック ○○
+  // 強化拡張パック ○○
+  // ハイクラスパック ○○
+  // --------------------------------
+
+  const packRegex =
+    /(?:強化拡張パック|拡張パック|ハイクラスパック)\s*[：:]?\s*[「『]?([^\n「」『』]+?)[」』]?(?=\s*(?:再入荷|入荷|再販|販売開始|販売中|販売しております|在庫あり|完売|$))/g;
 
   for (
     const match of text.matchAll(
-      bracketRegex
+      packRegex
     )
   ) {
-    const product =
-      match[1]?.trim();
+    addProduct(
+      products,
+      match[1]
+    );
+  }
 
-    if (!product) {
+  // --------------------------------
+  // ④ スターター系
+  // --------------------------------
+
+  const deckRegex =
+    /(?:スターターデッキ|スターターセット|プレミアムデッキセット|デッキビルドBOX|スペシャルデッキセット)\s*[：:]?\s*[「『]?([^\n「」『』]+?)[」』]?(?=\s*(?:再入荷|入荷|再販|販売開始|販売中|販売しております|在庫あり|完売|$))/g;
+
+  for (
+    const match of text.matchAll(
+      deckRegex
+    )
+  ) {
+    addProduct(
+      products,
+      match[1]
+    );
+  }
+
+  // --------------------------------
+  // ⑤ BOX形式
+  //
+  // ブラックボルト BOX 再入荷
+  // のような投稿
+  // --------------------------------
+
+  const boxRegex =
+    /(?:^|\n)[✅☑️・■●★☆▶︎▶︎\s]*([^\n]{2,60}?\s+BOX)(?=\s*(?:再入荷|入荷|再販|販売開始|販売中|在庫あり|完売|$))/gi;
+
+  for (
+    const match of text.matchAll(
+      boxRegex
+    )
+  ) {
+    addProduct(
+      products,
+      match[1]
+    );
+  }
+
+  // --------------------------------
+  // ⑥
+  // 商品名 再入荷しました
+  //
+  // ただし誤判定防止のため
+  // 短い1行だけ対象
+  // --------------------------------
+
+  const lines =
+    text.split(/\r?\n/);
+
+  for (const line of lines) {
+    const trimmed =
+      line.trim();
+
+    if (
+      trimmed.length < 2 ||
+      trimmed.length > 80
+    ) {
       continue;
     }
 
-    const looksLikeProduct =
-      product.includes(
-        "CELEBRATION"
-      ) ||
-      product.includes("BOX") ||
-      product.includes("デッキ") ||
-      product.includes("パック") ||
-      product.includes("ex") ||
-      product.includes("EX");
+    const match =
+      trimmed.match(
+        /^[✅☑️・■●★☆▶︎▶︎\s]*(.+?)\s*(?:再入荷しました|入荷しました|販売開始しました|販売開始|在庫あり)$/
+      );
 
-    if (looksLikeProduct) {
-      products.add(product);
+    if (!match) {
+      continue;
     }
+
+    const candidate =
+      match[1];
+
+    // 情報系タイトルは商品扱いしない
+    if (
+      candidate.includes(
+        "販売情報"
+      ) ||
+      candidate.includes(
+        "再販情報"
+      ) ||
+      candidate.includes(
+        "入荷情報"
+      ) ||
+      candidate.includes(
+        "ポケカ"
+      ) ||
+      candidate.includes(
+        "ポケモンカード"
+      )
+    ) {
+      continue;
+    }
+
+    addProduct(
+      products,
+      candidate
+    );
   }
 
   return Array.from(products);
