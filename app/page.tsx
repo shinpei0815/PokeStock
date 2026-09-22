@@ -22,20 +22,19 @@ export default async function Home() {
         author_name,
         author_username
       )
-    `)
-    .order("created_at", { ascending: false });
+    `);
 
   if (error) {
-    return (
-      <main className="min-h-screen bg-gray-50 p-6 text-gray-900">
-        <div className="mx-auto max-w-3xl">
-          <h1 className="text-3xl font-bold">
-            PokeStock
-          </h1>
+    console.error(error);
 
-          <p className="mt-4 text-red-500">
-            データ取得エラー: {error.message}
-          </p>
+    return (
+      <main className="mx-auto min-h-screen max-w-5xl p-6">
+        <h1 className="text-3xl font-bold">
+          PokeStock
+        </h1>
+
+        <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-6 text-red-700">
+          販売情報の取得に失敗しました。
         </div>
       </main>
     );
@@ -54,21 +53,39 @@ export default async function Home() {
       : item.source_post ?? null,
   }));
 
+  // --------------------------------
+  // Xの投稿日時が新しい順に並べる
+  // --------------------------------
+
+  const sortedData = normalizedData.sort((a, b) => {
+    const aTime = a.source_post?.posted_at
+      ? new Date(a.source_post.posted_at).getTime()
+      : 0;
+
+    const bTime = b.source_post?.posted_at
+      ? new Date(b.source_post.posted_at).getTime()
+      : 0;
+
+    return bTime - aTime;
+  });
+
   return (
-    <main className="min-h-screen bg-gray-50 px-4 py-8 text-gray-900">
-      <div className="mx-auto max-w-3xl">
-        <header className="mb-8">
-          <h1 className="text-4xl font-bold">
-            PokeStock
-          </h1>
+    <main className="mx-auto min-h-screen max-w-5xl p-6">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold">
+          PokeStock
+        </h1>
 
-          <p className="mt-2 text-gray-600">
-            Xから取得したポケモンカードの販売情報
-          </p>
-        </header>
+        <p className="mt-2 text-gray-600">
+          ポケモンカードの販売・再入荷情報をチェック
+        </p>
 
-        <SalesList posts={normalizedData} />
+        <p className="mt-1 text-sm text-gray-500">
+          Xの投稿をもとに、24時間以内の販売情報を表示しています。
+        </p>
       </div>
+
+      <SalesList posts={sortedData} />
     </main>
   );
 }
