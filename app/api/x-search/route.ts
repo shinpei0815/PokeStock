@@ -28,6 +28,27 @@ async function stopXFetch(reason: string) {
     .eq("id", 1);
 }
 
+async function updateLastXFetchAt() {
+  const now = new Date().toISOString();
+
+  const { error } = await supabaseAdmin
+    .from("app_settings")
+    .update({
+      last_x_fetch_at: now,
+      updated_at: now,
+    })
+    .eq("id", 1);
+
+  if (error) {
+    console.error(
+      "last_x_fetch_at の更新に失敗しました:",
+      error.message
+    );
+  }
+
+  return now;
+}
+
 function isCreditError(
   status: number,
   responseData: unknown
@@ -93,7 +114,8 @@ export async function GET(request: Request) {
       id,
       x_fetch_enabled,
       x_fetch_stop_reason,
-      x_fetch_stopped_at
+      x_fetch_stopped_at,
+      last_x_fetch_at
     `)
     .eq("id", 1)
     .single();
@@ -120,6 +142,8 @@ export async function GET(request: Request) {
         settings.x_fetch_stop_reason,
       stopped_at:
         settings.x_fetch_stopped_at,
+      last_x_fetch_at:
+        settings.last_x_fetch_at,
     });
   }
 
@@ -220,6 +244,13 @@ export async function GET(request: Request) {
     );
   }
 
+  // --------------------------------
+  // ⑥ 最終取得時刻を更新
+  // --------------------------------
+
+  const lastXFetchAt =
+    await updateLastXFetchAt();
+
   const tweets: XTweet[] =
     Array.isArray(
       xResponse.data
@@ -228,7 +259,7 @@ export async function GET(request: Request) {
       : [];
 
   // --------------------------------
-  // ⑥ PokeStock側フィルター
+  // ⑦ PokeStock側フィルター
   // --------------------------------
 
   const pokemonWords = [
@@ -317,6 +348,8 @@ export async function GET(request: Request) {
   ) {
     return NextResponse.json({
       stopped: false,
+      last_x_fetch_at:
+        lastXFetchAt,
       original_count:
         tweets.length,
       filtered_count: 0,
@@ -328,7 +361,7 @@ export async function GET(request: Request) {
   }
 
   // --------------------------------
-  // ⑦ 必要な投稿者だけ取得
+  // ⑧ 必要な投稿者だけ取得
   // --------------------------------
 
   const authorIds =
@@ -378,6 +411,8 @@ export async function GET(request: Request) {
       return NextResponse.json(
         {
           stopped: true,
+          last_x_fetch_at:
+            lastXFetchAt,
           error:
             "X APIのクレジット不足または支出上限を検知しました",
           message:
@@ -394,6 +429,8 @@ export async function GET(request: Request) {
       {
         error:
           "X投稿者情報の取得に失敗しました",
+        last_x_fetch_at:
+          lastXFetchAt,
         x_response:
           usersXResponse,
       },
@@ -422,7 +459,7 @@ export async function GET(request: Request) {
     );
 
   // --------------------------------
-  // ⑧ x_posts保存用データ作成
+  // ⑨ x_posts保存用データ作成
   // --------------------------------
 
   const xPostsForSave =
@@ -469,7 +506,7 @@ export async function GET(request: Request) {
     );
 
   // --------------------------------
-  // ⑨ x_posts保存
+  // ⑩ x_posts保存
   // --------------------------------
 
   const {
@@ -499,6 +536,8 @@ export async function GET(request: Request) {
           "x_postsへの保存に失敗しました",
         details:
           xPostsError.message,
+        last_x_fetch_at:
+          lastXFetchAt,
       },
       {
         status: 500,
@@ -507,7 +546,7 @@ export async function GET(request: Request) {
   }
 
   // --------------------------------
-  // ⑩ sale_items解析
+  // ⑪ sale_items解析
   // --------------------------------
 
   const saleItemsForSave = [];
@@ -523,19 +562,16 @@ export async function GET(request: Request) {
         xPost.author_username
       );
 
-    // 店舗名が取れない
     if (!parsed.storeName) {
       continue;
     }
 
-    // 商品名が取れない
     if (
       parsed.products.length === 0
     ) {
       continue;
     }
 
-    // 販売状況が不明
     if (
       parsed.status ===
       "unknown"
@@ -571,7 +607,7 @@ export async function GET(request: Request) {
   }
 
   // --------------------------------
-  // ⑪ sale_items保存
+  // ⑫ sale_items保存
   // --------------------------------
 
   if (
@@ -602,6 +638,8 @@ export async function GET(request: Request) {
             "sale_itemsへの保存に失敗しました",
           details:
             saleItemsError.message,
+          last_x_fetch_at:
+            lastXFetchAt,
         },
         {
           status: 500,
@@ -611,7 +649,7 @@ export async function GET(request: Request) {
   }
 
   // --------------------------------
-  // ⑫ 結果確認用データ
+  // ⑬ 結果確認用データ
   // --------------------------------
 
   const analyzedData =
@@ -637,11 +675,13 @@ export async function GET(request: Request) {
     );
 
   // --------------------------------
-  // ⑬ レスポンス
+  // ⑭ レスポンス
   // --------------------------------
 
   return NextResponse.json({
     stopped: false,
+    last_x_fetch_at:
+      lastXFetchAt,
 
     original_count:
       tweets.length,
