@@ -15,21 +15,24 @@ function detectStatus(
 ): ParsedSalePost["status"] {
   if (
     text.includes("完売しました") ||
-    text.includes("完売いたしました")
+    text.includes("完売いたしました") ||
+    text.includes("完売となりました")
   ) {
     return "sold_out";
   }
 
   if (
     text.includes("残りわずか") ||
-    text.includes("残り僅か")
+    text.includes("残り僅か") ||
+    text.includes("残り少ない")
   ) {
     return "low_stock";
   }
 
   if (
     text.includes("抽選受付") ||
-    text.includes("抽選販売")
+    text.includes("抽選販売") ||
+    text.includes("抽選予約")
   ) {
     return "lottery";
   }
@@ -40,7 +43,9 @@ function detectStatus(
     text.includes("販売開始") ||
     text.includes("先着販売") ||
     text.includes("在庫あり") ||
-    text.includes("販売しております")
+    text.includes("販売しております") ||
+    text.includes("再販情報") ||
+    text.includes("入荷情報")
   ) {
     return "in_stock";
   }
@@ -48,7 +53,10 @@ function detectStatus(
   return "unknown";
 }
 
-function extractStoreName(
+/**
+ * 本文に書かれている有名店舗名を判定
+ */
+function extractKnownStoreFromText(
   text: string
 ): string | null {
   const stores: {
@@ -72,7 +80,7 @@ function extractStoreName(
       name: "ポケモンセンター",
     },
     {
-      pattern: /TSUTAYA/,
+      pattern: /TSUTAYA/i,
       name: "TSUTAYA",
     },
     {
@@ -99,25 +107,175 @@ function extractStoreName(
       pattern: /ファミリーマート|ファミマ/,
       name: "ファミリーマート",
     },
+    {
+      pattern: /エディオン/,
+      name: "エディオン",
+    },
+    {
+      pattern: /ジョーシン|Joshin/i,
+      name: "Joshin",
+    },
+    {
+      pattern: /ヤマダ電機|ヤマダデンキ/,
+      name: "ヤマダデンキ",
+    },
+    {
+      pattern: /ドンキホーテ|ドン・キホーテ/,
+      name: "ドン・キホーテ",
+    },
   ];
 
-  const store = stores.find(({ pattern }) =>
+  const foundStore = stores.find(({ pattern }) =>
     pattern.test(text)
   );
 
-  return store?.name ?? null;
+  return foundStore?.name ?? null;
 }
 
+/**
+ * Xの投稿者名が店舗っぽいか判定
+ */
+function extractStoreFromAuthor(
+  authorName?: string | null,
+  authorUsername?: string | null
+): string | null {
+  if (!authorName) {
+    return null;
+  }
+
+  const storeWords = [
+    "カードショップ",
+    "カードショップ",
+    "トレカ",
+    "TCG",
+    "Trading Card",
+    "CARD SHOP",
+    "Card Shop",
+    "ポケモンセンター",
+    "ポケセン",
+    "GEO",
+    "ゲオ",
+    "ヨドバシ",
+    "ビックカメラ",
+    "TSUTAYA",
+    "BOOKOFF",
+    "ブックオフ",
+    "イオン",
+    "トイザらス",
+    "ホビー",
+    "HOBBY",
+    "ショップ",
+    "SHOP",
+    "店舗",
+  ];
+
+  const looksLikeStore = storeWords.some((word) =>
+    authorName
+      .toLowerCase()
+      .includes(word.toLowerCase())
+  );
+
+  if (!looksLikeStore) {
+    return null;
+  }
+
+  // Xの表示名をそのまま店舗名候補として使う
+  return authorName.trim();
+}
+
+/**
+ * 店舗名判定
+ *
+ * 優先順位:
+ * 1. 投稿本文に明確な店舗名がある
+ * 2. 投稿者名が店舗アカウントっぽい
+ */
+function extractStoreName(
+  text: string,
+  authorName?: string | null,
+  authorUsername?: string | null
+): string | null {
+  const textStore =
+    extractKnownStoreFromText(text);
+
+  if (textStore) {
+    return textStore;
+  }
+
+  return extractStoreFromAuthor(
+    authorName,
+    authorUsername
+  );
+}
+
+/**
+ * 商品名を抽出
+ */
 function extractProducts(text: string): string[] {
   const products = new Set<string>();
 
-  // 「30th CELEBRATION」のような「」内を取得
+  // 「商品名」
   const japaneseQuoteRegex = /「([^」]+)」/g;
 
-  for (const match of text.matchAll(japaneseQuoteRegex)) {
+  for (
+    const match of text.matchAll(
+      japaneseQuoteRegex
+    )
+  ) {
     const product = match[1]?.trim();
 
-    if (product) {
+    if (
+      product &&
+      product.length >= 2 &&
+      product.length <= 100
+    ) {
+      products.add(product);
+    }
+  }
+
+  // 『商品名』
+  const doubleQuoteRegex = /『([^』]+)』/g;
+
+  for (
+    const match of text.matchAll(
+      doubleQuoteRegex
+    )
+  ) {
+    const product = match[1]?.trim();
+
+    if (
+      product &&
+      product.length >= 2 &&
+      product.length <= 100
+    ) {
+      products.add(product);
+    }
+  }
+
+  // 【】は「販売情報」なども多いため、
+  // ポケカ商品っぽい文字が含まれる場合だけ採用
+  const bracketRegex = /【([^】]+)】/g;
+
+  for (
+    const match of text.matchAll(
+      bracketRegex
+    )
+  ) {
+    const product = match[1]?.trim();
+
+    if (!product) {
+      continue;
+    }
+
+    const looksLikeProduct =
+      product.includes("CELEBRATION") ||
+      product.includes("BOX") ||
+      product.includes("デッキ") ||
+      product.includes("パック") ||
+      product.includes("ex") ||
+      product.includes("EX");
+
+    if (looksLikeProduct) {
       products.add(product);
     }
   }
@@ -126,13 +284,24 @@ function extractProducts(text: string): string[] {
 }
 
 export function parseSalePost(
-  text: string
+  text: string,
+  authorName?: string | null,
+  authorUsername?: string | null
 ): ParsedSalePost {
-  const storeName = extractStoreName(text);
-  const products = extractProducts(text);
-  const status = detectStatus(text);
+  const storeName =
+    extractStoreName(
+      text,
+      authorName,
+      authorUsername
+    );
 
-  let confidence = 0.5;
+  const products =
+    extractProducts(text);
+
+  const status =
+    detectStatus(text);
+
+  let confidence = 0.4;
 
   if (storeName) {
     confidence += 0.2;
@@ -146,7 +315,21 @@ export function parseSalePost(
     confidence += 0.1;
   }
 
-  confidence = Math.min(confidence, 1);
+  // 店舗っぽい投稿者名まで取れていれば少し加点
+  if (
+    authorName &&
+    extractStoreFromAuthor(
+      authorName,
+      authorUsername
+    )
+  ) {
+    confidence += 0.1;
+  }
+
+  confidence = Math.min(
+    Number(confidence.toFixed(3)),
+    1
+  );
 
   return {
     storeName,

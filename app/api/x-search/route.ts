@@ -16,14 +16,18 @@ type XUser = {
   username: string;
 };
 
-async function stopXFetch(reason: string) {
+async function stopXFetch(
+  reason: string
+) {
   await supabaseAdmin
     .from("app_settings")
     .update({
       x_fetch_enabled: false,
       x_fetch_stop_reason: reason,
-      x_fetch_stopped_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      x_fetch_stopped_at:
+        new Date().toISOString(),
+      updated_at:
+        new Date().toISOString(),
     })
     .eq("id", 1);
 }
@@ -32,7 +36,10 @@ function isCreditError(
   status: number,
   responseData: unknown
 ) {
-  const text = JSON.stringify(responseData).toLowerCase();
+  const text =
+    JSON.stringify(
+      responseData
+    ).toLowerCase();
 
   return (
     status === 402 ||
@@ -45,17 +52,21 @@ function isCreditError(
   );
 }
 
-export async function GET(request: Request) {
+export async function GET(
+  request: Request
+) {
   // --------------------------------
   // ① CRON_SECRET確認
   // --------------------------------
 
-  const cronSecret = process.env.CRON_SECRET;
+  const cronSecret =
+    process.env.CRON_SECRET;
 
   if (!cronSecret) {
     return NextResponse.json(
       {
-        error: "CRON_SECRET が設定されていません",
+        error:
+          "CRON_SECRET が設定されていません",
       },
       {
         status: 500,
@@ -64,7 +75,9 @@ export async function GET(request: Request) {
   }
 
   const authorization =
-    request.headers.get("authorization");
+    request.headers.get(
+      "authorization"
+    );
 
   if (
     authorization !==
@@ -81,7 +94,7 @@ export async function GET(request: Request) {
   }
 
   // --------------------------------
-  // ② 自動取得がONか確認
+  // ② 自動取得ON/OFF確認
   // --------------------------------
 
   const {
@@ -112,20 +125,25 @@ export async function GET(request: Request) {
     );
   }
 
-  if (!settings.x_fetch_enabled) {
+  if (
+    !settings.x_fetch_enabled
+  ) {
     return NextResponse.json({
       stopped: true,
+
       message:
         "X APIの自動取得は停止中です",
+
       reason:
         settings.x_fetch_stop_reason,
+
       stopped_at:
         settings.x_fetch_stopped_at,
     });
   }
 
   // --------------------------------
-  // ③ Bearer Token確認
+  // ③ X Bearer Token
   // --------------------------------
 
   const bearerToken =
@@ -157,32 +175,32 @@ export async function GET(request: Request) {
   const params =
     new URLSearchParams({
       query,
+
       "tweet.fields":
         "created_at,author_id",
+
       max_results: "10",
     });
 
   // --------------------------------
-  // ⑤ Xから投稿取得
+  // ⑤ X投稿取得
   // --------------------------------
 
-  const response = await fetch(
-    `https://api.x.com/2/tweets/search/recent?${params.toString()}`,
-    {
-      headers: {
-        Authorization:
-          `Bearer ${bearerToken}`,
-      },
-      cache: "no-store",
-    }
-  );
+  const response =
+    await fetch(
+      `https://api.x.com/2/tweets/search/recent?${params.toString()}`,
+      {
+        headers: {
+          Authorization:
+            `Bearer ${bearerToken}`,
+        },
+
+        cache: "no-store",
+      }
+    );
 
   const xResponse =
     await response.json();
-
-  // --------------------------------
-  // ⑥ クレジット系エラーなら自動停止
-  // --------------------------------
 
   if (!response.ok) {
     if (
@@ -198,10 +216,13 @@ export async function GET(request: Request) {
       return NextResponse.json(
         {
           stopped: true,
+
           error:
             "X APIのクレジット不足または支出上限を検知しました",
+
           message:
             "PokeStockのX自動取得をOFFにしました",
+
           x_response:
             xResponse,
         },
@@ -216,6 +237,7 @@ export async function GET(request: Request) {
       {
         error:
           "X APIの取得に失敗しました",
+
         x_response:
           xResponse,
       },
@@ -227,12 +249,14 @@ export async function GET(request: Request) {
   }
 
   const tweets: XTweet[] =
-    Array.isArray(xResponse.data)
+    Array.isArray(
+      xResponse.data
+    )
       ? xResponse.data
       : [];
 
   // --------------------------------
-  // ⑦ PokeStock側フィルター
+  // ⑥ PokeStock側フィルター
   // --------------------------------
 
   const pokemonWords = [
@@ -282,51 +306,69 @@ export async function GET(request: Request) {
   ];
 
   const filteredTweets =
-    tweets.filter((tweet) => {
-      const text =
-        tweet.text;
+    tweets.filter(
+      (tweet) => {
+        const text =
+          tweet.text;
 
-      const hasPokemonWord =
-        pokemonWords.some((word) =>
-          text.includes(word)
+        const hasPokemonWord =
+          pokemonWords.some(
+            (word) =>
+              text.includes(
+                word
+              )
+          );
+
+        const hasSalesWord =
+          salesWords.some(
+            (word) =>
+              text.includes(
+                word
+              )
+          );
+
+        const hasExcludeWord =
+          excludeWords.some(
+            (word) =>
+              text.includes(
+                word
+              )
+          );
+
+        return (
+          hasPokemonWord &&
+          hasSalesWord &&
+          !hasExcludeWord
         );
+      }
+    );
 
-      const hasSalesWord =
-        salesWords.some((word) =>
-          text.includes(word)
-        );
-
-      const hasExcludeWord =
-        excludeWords.some((word) =>
-          text.includes(word)
-        );
-
-      return (
-        hasPokemonWord &&
-        hasSalesWord &&
-        !hasExcludeWord
-      );
-    });
-
-  // 販売情報が0件なら
-  // 投稿者APIは呼ばず終了
+  // 候補0件なら
+  // 投稿者APIは呼ばない
   if (
-    filteredTweets.length === 0
+    filteredTweets.length ===
+    0
   ) {
     return NextResponse.json({
       stopped: false,
+
       original_count:
         tweets.length,
+
       filtered_count: 0,
+
       authors_requested: 0,
+
       x_posts_saved: 0,
+
       sale_items_saved: 0,
+
       data: [],
     });
   }
 
   // --------------------------------
-  // ⑧ 必要な投稿者だけ取得
+  // ⑦ 必要な投稿者だけ取得
   // --------------------------------
 
   const authorIds =
@@ -343,6 +385,7 @@ export async function GET(request: Request) {
     new URLSearchParams({
       ids:
         authorIds.join(","),
+
       "user.fields":
         "id,name,username",
     });
@@ -355,6 +398,7 @@ export async function GET(request: Request) {
           Authorization:
             `Bearer ${bearerToken}`,
         },
+
         cache: "no-store",
       }
     );
@@ -362,11 +406,9 @@ export async function GET(request: Request) {
   const usersXResponse =
     await usersResponse.json();
 
-  // --------------------------------
-  // ⑨ 投稿者取得でもクレジット切れ確認
-  // --------------------------------
-
-  if (!usersResponse.ok) {
+  if (
+    !usersResponse.ok
+  ) {
     if (
       isCreditError(
         usersResponse.status,
@@ -380,8 +422,10 @@ export async function GET(request: Request) {
       return NextResponse.json(
         {
           stopped: true,
+
           error:
             "X APIのクレジット不足または支出上限を検知しました",
+
           message:
             "PokeStockのX自動取得をOFFにしました",
         },
@@ -396,6 +440,7 @@ export async function GET(request: Request) {
       {
         error:
           "X投稿者情報の取得に失敗しました",
+
         x_response:
           usersXResponse,
       },
@@ -415,14 +460,16 @@ export async function GET(request: Request) {
 
   const userMap =
     new Map(
-      users.map((user) => [
-        user.id,
-        user,
-      ])
+      users.map(
+        (user) => [
+          user.id,
+          user,
+        ]
+      )
     );
 
   // --------------------------------
-  // ⑩ x_posts用データ作成
+  // ⑧ x_posts用データ
   // --------------------------------
 
   const xPostsForSave =
@@ -461,15 +508,17 @@ export async function GET(request: Request) {
 
           raw_data: {
             tweet,
+
             author:
-              author ?? null,
+              author ??
+              null,
           },
         };
       }
     );
 
   // --------------------------------
-  // ⑪ x_postsへ保存
+  // ⑨ x_posts保存
   // --------------------------------
 
   const {
@@ -497,6 +546,7 @@ export async function GET(request: Request) {
       {
         error:
           "x_postsへの保存に失敗しました",
+
         details:
           xPostsError.message,
       },
@@ -507,10 +557,11 @@ export async function GET(request: Request) {
   }
 
   // --------------------------------
-  // ⑫ sale_items用データ作成
+  // ⑩ sale_items解析
   // --------------------------------
 
-  const saleItemsForSave = [];
+  const saleItemsForSave =
+    [];
 
   for (
     const xPost of
@@ -518,7 +569,9 @@ export async function GET(request: Request) {
   ) {
     const parsed =
       parseSalePost(
-        xPost.post_text
+        xPost.post_text,
+        xPost.author_name,
+        xPost.author_username
       );
 
     if (
@@ -530,6 +583,13 @@ export async function GET(request: Request) {
     if (
       parsed.products
         .length === 0
+    ) {
+      continue;
+    }
+
+    if (
+      parsed.status ===
+      "unknown"
     ) {
       continue;
     }
@@ -562,7 +622,7 @@ export async function GET(request: Request) {
   }
 
   // --------------------------------
-  // ⑬ sale_itemsへ保存
+  // ⑪ sale_items保存
   // --------------------------------
 
   if (
@@ -579,6 +639,7 @@ export async function GET(request: Request) {
         {
           onConflict:
             "source_post_id,product_name,store_name",
+
           ignoreDuplicates:
             true,
         }
@@ -591,6 +652,7 @@ export async function GET(request: Request) {
         {
           error:
             "sale_itemsへの保存に失敗しました",
+
           details:
             saleItemsError.message,
         },
@@ -602,26 +664,30 @@ export async function GET(request: Request) {
   }
 
   // --------------------------------
-  // ⑭ レスポンス
+  // ⑫ 結果確認用
   // --------------------------------
 
   const analyzedData =
     (
       savedXPosts ?? []
-    ).map((xPost) => ({
-      x_post_id:
-        xPost.x_post_id,
+    ).map(
+      (xPost) => ({
+        x_post_id:
+          xPost.x_post_id,
 
-      author_name:
-        xPost.author_name,
+        author_name:
+          xPost.author_name,
 
-      author_username:
-        xPost.author_username,
+        author_username:
+          xPost.author_username,
 
-      ...parseSalePost(
-        xPost.post_text
-      ),
-    }));
+        ...parseSalePost(
+          xPost.post_text,
+          xPost.author_name,
+          xPost.author_username
+        ),
+      })
+    );
 
   return NextResponse.json({
     stopped: false,
