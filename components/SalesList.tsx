@@ -105,8 +105,7 @@ function getFreshness(
   if (ageMinutes === null) {
     return {
       label: "時刻不明",
-      className:
-        "bg-gray-100 text-gray-600",
+      className: "bg-gray-100 text-gray-600",
       cardClass: "",
     };
   }
@@ -114,8 +113,7 @@ function getFreshness(
   if (ageMinutes <= 60) {
     return {
       label: "新しい情報",
-      className:
-        "bg-green-100 text-green-700",
+      className: "bg-green-100 text-green-700",
       cardClass: "",
     };
   }
@@ -123,16 +121,14 @@ function getFreshness(
   if (ageMinutes <= 180) {
     return {
       label: "少し前の情報",
-      className:
-        "bg-yellow-100 text-yellow-700",
+      className: "bg-yellow-100 text-yellow-700",
       cardClass: "",
     };
   }
 
   return {
     label: "情報が古い可能性あり",
-    className:
-      "bg-gray-200 text-gray-600",
+    className: "bg-gray-200 text-gray-600",
     cardClass: "opacity-70",
   };
 }
@@ -207,143 +203,113 @@ export default function SalesList({
       clearInterval(timer);
   }, []);
 
-  // --------------------------------
-  // 24時間以内の情報だけ残す
-  // --------------------------------
-
-  const visiblePosts =
-    useMemo(() => {
-      return posts.filter((post) => {
-        if (now === null) {
-          return true;
-        }
-
-        const ageMinutes =
-          getAgeMinutes(
-            post.source_post
-              ?.posted_at ?? null,
-            now
-          );
-
-        if (
-          ageMinutes === null
-        ) {
-          return true;
-        }
-
-        return (
-          ageMinutes <
-          24 * 60
-        );
-      });
-    }, [posts, now]);
-
-  // --------------------------------
-  // 同じX投稿を1グループにまとめる
-  // --------------------------------
-
-  const groupedPosts =
-    useMemo(() => {
-      const groupMap =
-        new Map<
-          string,
-          SaleGroup
-        >();
-
-      for (
-        const post of
-          visiblePosts
-      ) {
-        const sourcePost =
-          post.source_post;
-
-        const key =
-          sourcePost?.id
-            ? `x-${sourcePost.id}`
-            : `sale-${post.id}`;
-
-        const existing =
-          groupMap.get(key);
-
-        if (existing) {
-          existing.items.push(post);
-          continue;
-        }
-
-        groupMap.set(key, {
-          key,
-          items: [post],
-          sourcePost,
-          storeName:
-            post.store_name,
-          status:
-            post.status,
-        });
+  const visiblePosts = useMemo(() => {
+    return posts.filter((post) => {
+      if (now === null) {
+        return true;
       }
 
-      return Array.from(
-        groupMap.values()
-      );
-    }, [visiblePosts]);
+      const ageMinutes =
+        getAgeMinutes(
+          post.source_post?.posted_at ?? null,
+          now
+        );
 
-  // --------------------------------
-  // 検索・ステータス絞り込み
-  // --------------------------------
+      if (ageMinutes === null) {
+        return true;
+      }
+
+      return ageMinutes < 24 * 60;
+    });
+  }, [posts, now]);
+
+  const groupedPosts = useMemo(() => {
+    const groupMap =
+      new Map<string, SaleGroup>();
+
+    for (const post of visiblePosts) {
+      const sourcePost =
+        post.source_post;
+
+      const key =
+        sourcePost?.id
+          ? `x-${sourcePost.id}`
+          : `sale-${post.id}`;
+
+      const existing =
+        groupMap.get(key);
+
+      if (existing) {
+        existing.items.push(post);
+        continue;
+      }
+
+      groupMap.set(key, {
+        key,
+        items: [post],
+        sourcePost,
+        storeName:
+          post.store_name,
+        status:
+          post.status,
+      });
+    }
+
+    return Array.from(
+      groupMap.values()
+    );
+  }, [visiblePosts]);
 
   const filteredGroups =
-    groupedPosts.filter(
-      (group) => {
-        const searchKeyword =
-          keyword
-            .trim()
-            .toLowerCase();
+    groupedPosts.filter((group) => {
+      const searchKeyword =
+        keyword
+          .trim()
+          .toLowerCase();
 
-        const storeName =
-          group.storeName
-            ?.toLowerCase() ??
-          "";
+      const storeName =
+        group.storeName
+          ?.toLowerCase() ?? "";
 
-        const productNames =
-          group.items.map(
-            (item) =>
-              item.product_name
-                ?.toLowerCase() ??
-              ""
-          );
-
-        const matchesKeyword =
-          searchKeyword === "" ||
-          storeName.includes(
-            searchKeyword
-          ) ||
-          productNames.some(
-            (productName) =>
-              productName.includes(
-                searchKeyword
-              )
-          );
-
-        const matchesStatus =
-          status === "all" ||
-          group.items.some(
-            (item) =>
-              item.status ===
-              status
-          );
-
-        return (
-          matchesKeyword &&
-          matchesStatus
+      const productNames =
+        group.items.map(
+          (item) =>
+            item.product_name
+              ?.toLowerCase() ?? ""
         );
-      }
-    );
+
+      const matchesKeyword =
+        searchKeyword === "" ||
+        storeName.includes(
+          searchKeyword
+        ) ||
+        productNames.some(
+          (productName) =>
+            productName.includes(
+              searchKeyword
+            )
+        );
+
+      const matchesStatus =
+        status === "all" ||
+        group.items.some(
+          (item) =>
+            item.status === status
+        );
+
+      return (
+        matchesKeyword &&
+        matchesStatus
+      );
+    });
 
   return (
     <>
-      <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-4">
+      {/* 検索・絞り込み */}
+      <div className="mb-5 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:mb-6 sm:p-5">
         <div className="grid gap-4 md:grid-cols-2">
           <div>
-            <label className="mb-2 block text-sm font-bold">
+            <label className="mb-2 block text-sm font-bold text-gray-800">
               商品名・店舗名で検索
             </label>
 
@@ -356,12 +322,12 @@ export default function SalesList({
                 )
               }
               placeholder="例：30th、GEO"
-              className="w-full rounded-lg border border-gray-300 px-4 py-2 outline-none focus:border-blue-500"
+              className="w-full rounded-xl border border-gray-300 px-4 py-3 text-base text-gray-900 outline-none transition focus:border-blue-500 sm:py-2.5"
             />
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-bold">
+            <label className="mb-2 block text-sm font-bold text-gray-800">
               販売状況
             </label>
 
@@ -372,7 +338,7 @@ export default function SalesList({
                   e.target.value
                 )
               }
-              className="w-full rounded-lg border border-gray-300 px-4 py-2 outline-none focus:border-blue-500"
+              className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-base text-gray-900 outline-none transition focus:border-blue-500 sm:py-2.5"
             >
               <option value="all">
                 すべて
@@ -402,7 +368,7 @@ export default function SalesList({
         </div>
       </div>
 
-      <p className="mb-4 text-sm text-gray-500">
+      <p className="mb-3 text-sm text-gray-500 sm:mb-4">
         {filteredGroups.length}
         件の販売情報
       </p>
@@ -437,23 +403,24 @@ export default function SalesList({
             return (
               <article
                 key={group.key}
-                className={`rounded-2xl border border-gray-200 bg-white p-6 shadow-sm ${freshness.cardClass}`}
+                className={`overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6 ${freshness.cardClass}`}
               >
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <h2 className="text-xl font-bold">
+                {/* 店舗名 + ステータス */}
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                  <div className="min-w-0">
+                    <h2 className="break-words text-lg font-bold text-gray-900 sm:text-xl">
                       {group.storeName ??
                         "店舗不明"}
                     </h2>
 
-                    <p className="mt-1 text-sm text-gray-500">
+                    <p className="mt-1 text-xs text-gray-500 sm:text-sm">
                       対象商品
                     </p>
                   </div>
 
                   <div className="flex flex-wrap gap-2 sm:flex-col sm:items-end">
                     <span
-                      className={`rounded-full px-3 py-1 text-sm font-bold ${displayStatus.className}`}
+                      className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-bold sm:text-sm ${displayStatus.className}`}
                     >
                       {
                         displayStatus.label
@@ -461,7 +428,7 @@ export default function SalesList({
                     </span>
 
                     <span
-                      className={`rounded-full px-3 py-1 text-xs font-bold ${freshness.className}`}
+                      className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-bold ${freshness.className}`}
                     >
                       {
                         freshness.label
@@ -479,7 +446,7 @@ export default function SalesList({
                           item.id
                         }
                         href={`/sales/${item.id}`}
-                        className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-bold text-gray-800 transition hover:bg-gray-100"
+                        className="max-w-full break-words rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-bold text-gray-800 transition hover:bg-gray-100 active:bg-gray-200"
                       >
                         {item.product_name ??
                           "商品名不明"}
@@ -490,13 +457,16 @@ export default function SalesList({
 
                 {/* X投稿本文 */}
                 {sourcePost?.post_text && (
-                  <p className="mt-5 whitespace-pre-wrap text-gray-700">
-                    {
-                      sourcePost.post_text
-                    }
-                  </p>
+                  <div className="mt-5 rounded-xl bg-gray-50 p-3 sm:p-4">
+                    <p className="whitespace-pre-wrap break-words text-sm leading-6 text-gray-700 sm:text-base sm:leading-7">
+                      {
+                        sourcePost.post_text
+                      }
+                    </p>
+                  </div>
                 )}
 
+                {/* 投稿情報 */}
                 <div className="mt-5 border-t border-gray-100 pt-4">
                   {sourcePost?.posted_at && (
                     <>
@@ -506,7 +476,7 @@ export default function SalesList({
                         )}
                       </p>
 
-                      <p className="mt-1 text-sm text-gray-500">
+                      <p className="mt-1 break-words text-xs text-gray-500 sm:text-sm">
                         投稿日時：
                         {new Date(
                           sourcePost.posted_at
@@ -518,7 +488,7 @@ export default function SalesList({
                   )}
 
                   {sourcePost?.author_name && (
-                    <p className="mt-1 text-sm text-gray-500">
+                    <p className="mt-1 break-words text-xs text-gray-500 sm:text-sm">
                       投稿者：
                       {
                         sourcePost.author_name
@@ -529,7 +499,7 @@ export default function SalesList({
                     </p>
                   )}
 
-                  <div className="mt-3 flex flex-wrap gap-4">
+                  <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:gap-4">
                     {group.items.length ===
                       1 && (
                       <Link
@@ -549,8 +519,7 @@ export default function SalesList({
                         rel="noopener noreferrer"
                         className="text-sm font-bold text-blue-600 hover:underline"
                       >
-                        Xの元投稿を見る
-                        →
+                        Xの元投稿を見る →
                       </a>
                     )}
                   </div>
@@ -562,7 +531,7 @@ export default function SalesList({
 
         {filteredGroups.length ===
           0 && (
-          <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center text-gray-500">
+          <div className="rounded-2xl border border-gray-200 bg-white p-6 text-center text-sm text-gray-500 sm:p-8 sm:text-base">
             現在、新しい販売情報はありません。
           </div>
         )}
